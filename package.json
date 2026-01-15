@@ -1,0 +1,28 @@
+{
+  "name": "ai-textbook-converter",
+  "version": "1.0.0",
+  "description": "AI教材轉換系統 - 將Markdown轉換為專業PDF和Word文件",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "keywords": [
+    "pdf",
+    "docx",
+    "markdown",
+    "教材",
+    "轉換"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^2.0.2",
+    "dotenv": "^16.4.7",
+    "puppeteer": "^24.1.1",
+    "pagedjs": "^0.4.3",
+    "markdown-it": "^14.1.0",
+    "@google/generative-ai": "^0.21.0"
+  }
+}
