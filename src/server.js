@@ -12,6 +12,32 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ============================================
+// 輔助函式：偵測是否為純文字格式
+// ============================================
+function isProbablyPlainText(content) {
+    // 如果內容中幾乎沒有 Markdown 語法標記，判定為純文字
+    const lines = content.split('\n');
+    const totalLines = lines.filter(l => l.trim()).length;
+
+    // 計算有 Markdown 語法的行數
+    let markdownLines = 0;
+    for (const line of lines) {
+        if (line.match(/^#{1,6}\s/) ||           // # 標題
+            line.match(/^\s*[-*+]\s/) ||         // - 列表
+            line.match(/^\s*\d+\.\s/) ||         // 1. 編號列表
+            line.match(/\[.+\]\(.+\)/) ||        // [連結](url)
+            line.match(/^```/) ||                // ```程式碼
+            line.match(/^\|.+\|/)) {             // | 表格 |
+            markdownLines++;
+        }
+    }
+
+    // 如果少於 10% 的行有 Markdown 語法，判定為純文字
+    return (markdownLines / totalLines) < 0.1;
+}
+
+
+// ============================================
 // 設定檔案上傳
 // ============================================
 const storage = multer.diskStorage({
@@ -29,7 +55,7 @@ const storage = multer.diskStorage({
     }
 });
 
-const upload = multer({ 
+const upload = multer({
     storage: storage,
     fileFilter: (req, file, cb) => {
         // 只接受 Markdown 檔案
@@ -75,9 +101,16 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
 
         console.log('📄 收到檔案:', req.file.originalname);
 
-        // 讀取 Markdown 內容
+        // 讀取檔案內容
         const filePath = req.file.path;
-        const markdownContent = fs.readFileSync(filePath, 'utf-8');
+        let markdownContent = fs.readFileSync(filePath, 'utf-8');
+
+        // 智能檢測：如果內容看起來像純文字，自動轉換為 Markdown
+        const textConverter = require('./textToMarkdown');
+        if (isProbablyPlainText(markdownContent)) {
+            console.log('🔄 偵測到純文字格式，正在自動轉換為 Markdown...');
+            markdownContent = textConverter.convertTextToMarkdown(markdownContent);
+        }
 
         // 第一階段:先產生基本 HTML
         const converter = require('./converter');
@@ -91,10 +124,11 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         console.log('📝 正在產生 Word...');
         const docxPath = await converter.generateWord(filePath, req.file.originalname);
 
-        // 回傳下載連結
+        // 回傳下載連結和預覽內容
         res.json({
             success: true,
             message: '轉換成功!',
+            htmlPreview: htmlContent,  // 新增：用於前端預覽
             files: {
                 pdf: `/download/pdf/${path.basename(pdfPath)}`,
                 docx: `/download/docx/${path.basename(docxPath)}`
@@ -105,8 +139,8 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
 
     } catch (error) {
         console.error('❌ 轉換失敗:', error);
-        res.status(500).json({ 
-            error: '轉換失敗: ' + error.message 
+        res.status(500).json({
+            error: '轉換失敗: ' + error.message
         });
     }
 });

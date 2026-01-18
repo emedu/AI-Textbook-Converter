@@ -1,48 +1,77 @@
 @echo off
-echo ========================================
-echo   AI 教材轉換系統 - 啟動中...
-echo ========================================
+setlocal
+echo ===========================================
+echo   AI Textbook Converter - Starting...
+echo ===========================================
+
+REM 設定當前目錄
+cd /d "%~dp0"
+
+REM 設定工具路徑
+set "NODE_PATH=%~dp0tools\node"
+set "PANDOC_PATH=%~dp0tools\pandoc"
+
+REM 將工具加入環境變數
+set "PATH=%NODE_PATH%;%PANDOC_PATH%;%PATH%"
+
+REM ----------------------------------
+REM 1. 檢查 Node
+REM ----------------------------------
+echo [Check] Node.js version:
+node -v
+if errorlevel 1 goto ErrorNode
+
+REM ----------------------------------
+REM 2. 檢查 Pandoc
+REM ----------------------------------
+echo [Check] Pandoc version:
+pandoc -v
+if errorlevel 1 goto ErrorPandoc
+
+REM ----------------------------------
+REM 3. 檢查並安裝套件
+REM ----------------------------------
+if exist "node_modules" goto StartServer
+
+echo.
+echo [Info] Target folder 'node_modules' not found.
+echo [Info] Installing dependencies (First run only)...
+echo This may take a few minutes...
+call npm install
+if errorlevel 1 goto ErrorInstall
+
+:StartServer
+echo.
+echo ===========================================
+echo   Starting Server...
+echo ===========================================
 echo.
 
-REM 檢查 Node.js 是否安裝
-node -v >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [錯誤] 找不到 Node.js!
-    echo 請先安裝 Node.js: https://nodejs.org/
-    echo.
-    pause
-    exit /b 1
-)
-
-echo [✓] Node.js 已安裝
-echo.
-
-REM 檢查是否已安裝套件
-if not exist "node_modules\" (
-    echo [!] 第一次使用,正在安裝必要套件...
-    echo 這可能需要 3-5 分鐘,請耐心等候
-    echo.
-    call npm install
-    if %errorlevel% neq 0 (
-        echo [錯誤] 套件安裝失敗!
-        pause
-        exit /b 1
-    )
-    echo.
-    echo [✓] 套件安裝完成!
-    echo.
-)
-
-echo [✓] 正在啟動伺服器...
-echo.
-echo ========================================
-echo   程式已啟動!
-echo   請在瀏覽器中開啟: http://localhost:3000
-echo   按 Ctrl+C 可以關閉程式
-echo ========================================
-echo.
+REM 先開啟瀏覽器
+start "" "http://localhost:3000"
 
 REM 啟動伺服器
 node src/server.js
-
 pause
+exit /b
+
+:ErrorNode
+echo.
+echo [Error] Node.js not found!
+echo Please check 'tools/node' folder.
+pause
+exit /b
+
+:ErrorPandoc
+echo.
+echo [Error] Pandoc not found!
+echo Please check 'tools/pandoc' folder.
+pause
+exit /b
+
+:ErrorInstall
+echo.
+echo [Error] Installation failed!
+echo Please check your internet connection.
+pause
+exit /b

@@ -32,6 +32,12 @@ function markdownToHTML(markdownContent) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>教材文件</title>
     <style>
+        /* ===== 頁面設定 ===== */
+        @page {
+            size: A4;
+            margin: 20mm;
+        }
+        
         /* ===== 基礎樣式 ===== */
         * {
             margin: 0;
@@ -41,80 +47,109 @@ function markdownToHTML(markdownContent) {
         
         body {
             font-family: "Microsoft JhengHei", "微軟正黑體", Arial, sans-serif;
-            line-height: 1.8;
+            line-height: 1.9;
             color: #333;
             background: white;
-            padding: 40px;
-            max-width: 900px;
-            margin: 0 auto;
+            font-size: 14px;
         }
         
-        /* ===== 標題樣式 ===== */
+        /* ===== 標題樣式 - 強化視覺層次 ===== */
         h1 {
-            font-size: 32px;
-            color: #2c3e50;
-            border-bottom: 3px solid #3498db;
-            padding-bottom: 10px;
-            margin: 40px 0 20px 0;
+            font-size: 28px;
+            font-weight: bold;
+            color: #1a1a1a;
+            border-bottom: 4px solid #3498db;
+            padding-bottom: 12px;
+            margin-top: 0;
+            margin-bottom: 24px;
+            page-break-before: always;  /* 每個 H1 前強制換頁 */
             page-break-after: avoid;
         }
         
+        /* 第一個 H1 不換頁 */
+        h1:first-of-type {
+            page-break-before: avoid;
+        }
+        
         h2 {
-            font-size: 26px;
-            color: #34495e;
-            border-left: 5px solid #3498db;
-            padding-left: 15px;
-            margin: 30px 0 15px 0;
+            font-size: 22px;
+            font-weight: bold;
+            color: #2c3e50;
+            border-left: 6px solid #3498db;
+            padding-left: 16px;
+            margin-top: 32px;
+            margin-bottom: 16px;
             page-break-after: avoid;
         }
         
         h3 {
-            font-size: 22px;
-            color: #555;
-            margin: 25px 0 12px 0;
+            font-size: 18px;
+            font-weight: bold;
+            color: #34495e;
+            margin-top: 24px;
+            margin-bottom: 12px;
             page-break-after: avoid;
         }
         
-        h4, h5, h6 {
-            font-size: 18px;
+        h4 {
+            font-size: 16px;
+            font-weight: bold;
+            color: #555;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            page-break-after: avoid;
+        }
+        
+        h5, h6 {
+            font-size: 14px;
+            font-weight: bold;
             color: #666;
-            margin: 20px 0 10px 0;
+            margin-top: 16px;
+            margin-bottom: 8px;
         }
         
-        /* ===== 段落與文字 ===== */
+        /* ===== 段落與文字 - 增加呼吸空間 ===== */
         p {
-            margin: 12px 0;
+            margin: 14px 0;
             text-align: justify;
+            line-height: 2.0;
         }
         
-        /* ===== 列表樣式 ===== */
+        /* ===== 列表樣式 - 改善可讀性 ===== */
         ul, ol {
-            margin: 15px 0;
-            padding-left: 30px;
+            margin: 16px 0;
+            padding-left: 32px;
         }
         
         li {
+            margin: 10px 0;
+            line-height: 1.8;
+        }
+        
+        /* 巢狀列表 */
+        li > ul, li > ol {
             margin: 8px 0;
         }
         
         /* ===== 程式碼區塊 ===== */
         code {
-            background: #f4f4f4;
-            padding: 2px 6px;
-            border-radius: 3px;
+            background: #f5f5f5;
+            padding: 3px 8px;
+            border-radius: 4px;
             font-family: "Consolas", "Courier New", monospace;
-            font-size: 14px;
-            color: #e74c3c;
+            font-size: 13px;
+            color: #c7254e;
         }
         
         pre {
             background: #2c3e50;
             color: #ecf0f1;
             padding: 20px;
-            border-radius: 5px;
+            border-radius: 6px;
             overflow-x: auto;
-            margin: 20px 0;
+            margin: 24px 0;
             page-break-inside: avoid;
+            line-height: 1.6;
         }
         
         pre code {
@@ -123,39 +158,47 @@ function markdownToHTML(markdownContent) {
             padding: 0;
         }
         
-        /* ===== 表格樣式 ===== */
+        /* ===== 表格樣式 - 專業排版 ===== */
         table {
             width: 100%;
             border-collapse: collapse;
-            margin: 20px 0;
+            margin: 24px 0;
             page-break-inside: avoid;
+            font-size: 13px;
         }
         
         th {
             background: #3498db;
             color: white;
-            padding: 12px;
+            padding: 14px 12px;
             text-align: left;
             font-weight: bold;
+            border: 1px solid #2980b9;
         }
         
         td {
             border: 1px solid #ddd;
-            padding: 10px;
+            padding: 12px;
+            vertical-align: top;
         }
         
         tr:nth-child(even) {
             background: #f9f9f9;
         }
         
+        tr:hover {
+            background: #f0f0f0;
+        }
+        
         /* ===== 引用區塊 ===== */
         blockquote {
-            border-left: 4px solid #3498db;
+            border-left: 5px solid #3498db;
             background: #f8f9fa;
-            padding: 15px 20px;
-            margin: 20px 0;
+            padding: 16px 24px;
+            margin: 24px 0;
             font-style: italic;
             color: #555;
+            page-break-inside: avoid;
         }
         
         /* ===== 連結樣式 ===== */
@@ -173,30 +216,60 @@ function markdownToHTML(markdownContent) {
             max-width: 100%;
             height: auto;
             display: block;
-            margin: 20px auto;
-            border-radius: 5px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin: 24px auto;
+            border-radius: 6px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.15);
+            page-break-inside: avoid;
         }
         
         /* ===== 分隔線 ===== */
         hr {
             border: none;
             border-top: 2px solid #ddd;
-            margin: 30px 0;
+            margin: 32px 0;
+        }
+        
+        /* ===== 強調文字 ===== */
+        strong, b {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        em, i {
+            font-style: italic;
+            color: #555;
         }
         
         /* ===== 列印專用樣式 ===== */
         @media print {
             body {
-                padding: 20px;
+                font-size: 12pt;
+            }
+            
+            h1 {
+                page-break-before: always;
+            }
+            
+            h1:first-of-type {
+                page-break-before: avoid;
             }
             
             h1, h2, h3, h4, h5, h6 {
                 page-break-after: avoid;
             }
             
-            pre, table, img {
+            p, li {
+                orphans: 3;
+                widows: 3;
+            }
+            
+            pre, table, img, blockquote {
                 page-break-inside: avoid;
+            }
+            
+            a {
+                color: #3498db;
+                text-decoration: underline;
             }
         }
     </style>

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -36,6 +37,7 @@
                 opacity: 0;
                 transform: translateY(-20px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -116,6 +118,7 @@
                 opacity: 0;
                 max-height: 0;
             }
+
             to {
                 opacity: 1;
                 max-height: 100px;
@@ -253,10 +256,74 @@
         }
 
         @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-10px); }
-            75% { transform: translateX(10px); }
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            25% {
+                transform: translateX(-10px);
+            }
+
+            75% {
+                transform: translateX(10px);
+            }
         }
+
+        .preview-container {
+            display: none;
+            background: #f8f9fa;
+            border: 2px solid #667eea;
+            border-radius: 15px;
+            padding: 25px;
+            margin-top: 20px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .preview-container.show {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .preview-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .preview-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            min-height: 300px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .preview-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .preview-actions .btn {
+            flex: 1;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #5a6268;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(108, 117, 125, 0.4);
+        }
+
 
         .footer {
             text-align: center;
@@ -266,6 +333,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <h1>📚 AI 教材轉換系統</h1>
@@ -301,6 +369,16 @@
         <!-- 錯誤訊息 -->
         <div class="error-message" id="errorMessage"></div>
 
+        <!-- 預覽區域 -->
+        <div class="preview-container" id="previewContainer">
+            <div class="preview-title">📄 預覽效果</div>
+            <div class="preview-content" id="previewContent"></div>
+            <div class="preview-actions">
+                <button class="btn btn-primary" id="confirmPreviewBtn">確認並下載</button>
+                <button class="btn btn-secondary" id="cancelPreviewBtn">重新上傳</button>
+            </div>
+        </div>
+
         <!-- 結果區域 -->
         <div class="result-container" id="resultContainer">
             <div class="result-title">✅ 轉換完成!</div>
@@ -328,11 +406,16 @@
         const progressFill = document.getElementById('progressFill');
         const statusMessage = document.getElementById('statusMessage');
         const errorMessage = document.getElementById('errorMessage');
+        const previewContainer = document.getElementById('previewContainer');
+        const previewContent = document.getElementById('previewContent');
+        const confirmPreviewBtn = document.getElementById('confirmPreviewBtn');
+        const cancelPreviewBtn = document.getElementById('cancelPreviewBtn');
         const resultContainer = document.getElementById('resultContainer');
         const downloadPDF = document.getElementById('downloadPDF');
         const downloadWord = document.getElementById('downloadWord');
 
         let selectedFile = null;
+        let convertedResult = null;
 
         // 點擊上傳區域
         uploadArea.addEventListener('click', () => {
@@ -375,6 +458,7 @@
             fileInfo.classList.add('show');
             convertBtn.disabled = false;
             hideError();
+            previewContainer.classList.remove('show');
             resultContainer.classList.remove('show');
         }
 
@@ -412,13 +496,11 @@
 
                 updateProgress(100, '轉換完成!');
 
-                // 顯示下載連結
+                // 儲存結果並顯示預覽
+                convertedResult = result;
                 setTimeout(() => {
                     progressContainer.classList.remove('show');
-                    resultContainer.classList.add('show');
-                    downloadPDF.href = result.files.pdf;
-                    downloadWord.href = result.files.docx;
-                    convertBtn.disabled = false;
+                    showPreview(result.htmlPreview);
                 }, 500);
 
             } catch (error) {
@@ -427,6 +509,32 @@
                 progressContainer.classList.remove('show');
                 convertBtn.disabled = false;
             }
+        });
+
+        // 顯示預覽
+        function showPreview(htmlContent) {
+            previewContent.innerHTML = htmlContent;
+            previewContainer.classList.add('show');
+            convertBtn.disabled = false;
+        }
+
+        // 確認預覽並下載
+        confirmPreviewBtn.addEventListener('click', () => {
+            if (!convertedResult) return;
+            previewContainer.classList.remove('show');
+            resultContainer.classList.add('show');
+            downloadPDF.href = convertedResult.files.pdf;
+            downloadWord.href = convertedResult.files.docx;
+        });
+
+        // 重新上傳
+        cancelPreviewBtn.addEventListener('click', () => {
+            previewContainer.classList.remove('show');
+            fileInput.value = '';
+            selectedFile = null;
+            convertedResult = null;
+            fileInfo.classList.remove('show');
+            convertBtn.disabled = true;
         });
 
         // 更新進度
@@ -448,4 +556,5 @@
         }
     </script>
 </body>
+
 </html>

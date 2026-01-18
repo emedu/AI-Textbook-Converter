@@ -20,3 +20,6 @@ Thumbs.db
 # 忽略暫存檔
 *.tmp
 *.temp
+
+# 忽略大型工具檔案 (GitHub 限制)
+tools/
