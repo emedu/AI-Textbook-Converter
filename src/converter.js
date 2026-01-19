@@ -10,18 +10,55 @@ const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
 
+// 自訂 Markdown-it 渲染器以支援 TOC 錨點
 const md = new MarkdownIt({
     html: true,
     linkify: true,
     typographer: true
 });
 
+// 用於儲存生成的目錄項目
+let tocItems = [];
+
+// 覆寫標題渲染，自動加入 ID
+md.renderer.rules.heading_open = function (tokens, idx, options, env, self) {
+    const token = tokens[idx];
+    const level = token.tag; // h1, h2...
+
+    // 取得標題文字 (從下一個 token content 抓)
+    const titleToken = tokens[idx + 1];
+    const title = titleToken ? titleToken.content : '';
+
+    // 產生唯一 ID (section-1, section-2...)
+    // 為了簡單，我們使用全局計數器或隨機數，但在這裡我們用簡單的索引
+    // 注意：因為 renderer 會被多次呼叫，每次轉換前需重置計數
+    const slug = 'section-' + (tocItems.length + 1);
+
+    // 只記錄 H1 和 H2 到目錄
+    if (level === 'h1' || level === 'h2') {
+        tocItems.push({
+            level: level,
+            title: title,
+            slug: slug
+        });
+    }
+
+    return `<${level} id="${slug}">`;
+};
+
+
 // ============================================
 // Markdown 轉 HTML
 // ============================================
 function markdownToHTML(markdownContent) {
-    // 將 Markdown 轉換為 HTML
+    // 重置目錄項目
+    tocItems = [];
+
+    // 將 Markdown 轉換為 HTML (這裡會觸發上面的 renderer 收集 tocItems)
     const htmlBody = md.render(markdownContent);
+
+    // 生成目錄 HTML
+    const tocHTML = generateTOCHTML(tocItems);
 
     // 包裝成完整的 HTML 文件(含樣式)
     const fullHTML = `
@@ -39,11 +76,7 @@ function markdownToHTML(markdownContent) {
         }
         
         /* ===== 基礎樣式 ===== */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
             font-family: "Microsoft JhengHei", "微軟正黑體", Arial, sans-serif;
@@ -52,8 +85,67 @@ function markdownToHTML(markdownContent) {
             background: white;
             font-size: 14px;
         }
-        
-        /* ===== 標題樣式 - 強化視覺層次 ===== */
+
+        /* ===== 目錄樣式 (TOC) - 仿書籍排版 ===== */
+        .toc-container {
+            page-break-after: always;
+            margin-bottom: 40px;
+            padding: 20px;
+            background: #fff;
+        }
+
+        .toc-header {
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+
+        .toc-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .toc-item {
+            display: flex;
+            align-items: baseline;
+            margin-bottom: 8px;
+        }
+
+        .toc-item.h1 {
+            font-weight: bold;
+            margin-top: 15px;
+            font-size: 16px;
+        }
+
+        .toc-item.h2 {
+            margin-left: 20px;
+            font-size: 14px;
+            color: #555;
+        }
+
+        .toc-link {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        /* 點點引導線 */
+        .toc-filler {
+            flex-grow: 1;
+            border-bottom: 1px dotted #999;
+            margin: 0 10px;
+            position: relative;
+            top: -4px; /* 微調對齊 */
+        }
+
+        .toc-page {
+            font-size: 12px;
+            color: #888;
+        }
+
+        /* ===== 標題樣式 ===== */
         h1 {
             font-size: 28px;
             font-weight: bold;
@@ -62,14 +154,11 @@ function markdownToHTML(markdownContent) {
             padding-bottom: 12px;
             margin-top: 0;
             margin-bottom: 24px;
-            page-break-before: always;  /* 每個 H1 前強制換頁 */
+            page-break-before: always;
             page-break-after: avoid;
         }
         
-        /* 第一個 H1 不換頁 */
-        h1:first-of-type {
-            page-break-before: avoid;
-        }
+        h1:first-of-type { page-break-before: avoid; }
         
         h2 {
             font-size: 22px;
@@ -82,199 +171,49 @@ function markdownToHTML(markdownContent) {
             page-break-after: avoid;
         }
         
-        h3 {
-            font-size: 18px;
-            font-weight: bold;
-            color: #34495e;
-            margin-top: 24px;
-            margin-bottom: 12px;
-            page-break-after: avoid;
-        }
+        h3 { font-size: 18px; margin-top: 24px; margin-bottom: 12px; }
+        h4 { font-size: 16px; margin-top: 20px; margin-bottom: 10px; }
         
-        h4 {
-            font-size: 16px;
-            font-weight: bold;
-            color: #555;
-            margin-top: 20px;
-            margin-bottom: 10px;
-            page-break-after: avoid;
-        }
+        p { margin: 14px 0; text-align: justify; line-height: 2.0; }
+        ul, ol { margin: 16px 0; padding-left: 32px; }
+        li { margin: 10px 0; line-height: 1.8; }
         
-        h5, h6 {
-            font-size: 14px;
-            font-weight: bold;
-            color: #666;
-            margin-top: 16px;
-            margin-bottom: 8px;
-        }
-        
-        /* ===== 段落與文字 - 增加呼吸空間 ===== */
-        p {
-            margin: 14px 0;
-            text-align: justify;
-            line-height: 2.0;
-        }
-        
-        /* ===== 列表樣式 - 改善可讀性 ===== */
-        ul, ol {
-            margin: 16px 0;
-            padding-left: 32px;
-        }
-        
-        li {
-            margin: 10px 0;
-            line-height: 1.8;
-        }
-        
-        /* 巢狀列表 */
-        li > ul, li > ol {
-            margin: 8px 0;
-        }
-        
-        /* ===== 程式碼區塊 ===== */
-        code {
-            background: #f5f5f5;
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-family: "Consolas", "Courier New", monospace;
-            font-size: 13px;
-            color: #c7254e;
-        }
-        
-        pre {
-            background: #2c3e50;
-            color: #ecf0f1;
-            padding: 20px;
-            border-radius: 6px;
-            overflow-x: auto;
-            margin: 24px 0;
-            page-break-inside: avoid;
-            line-height: 1.6;
-        }
-        
-        pre code {
-            background: transparent;
-            color: #ecf0f1;
-            padding: 0;
-        }
-        
-        /* ===== 表格樣式 - 專業排版 ===== */
+        /* 表格樣式優化 */
         table {
             width: 100%;
             border-collapse: collapse;
             margin: 24px 0;
             page-break-inside: avoid;
             font-size: 13px;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.05);
         }
         
         th {
             background: #3498db;
             color: white;
             padding: 14px 12px;
-            text-align: left;
-            font-weight: bold;
             border: 1px solid #2980b9;
         }
         
         td {
             border: 1px solid #ddd;
             padding: 12px;
-            vertical-align: top;
         }
         
-        tr:nth-child(even) {
-            background: #f9f9f9;
-        }
+        tr:nth-child(even) { background: #f9f9f9; }
+
+        /* 其他元素 */
+        blockquote { border-left: 5px solid #3498db; background: #f8f9fa; padding: 16px; margin: 20px 0; }
+        img { max-width: 100%; height: auto; display: block; margin: 20px auto; }
+        a { color: #3498db; text-decoration: none; }
         
-        tr:hover {
-            background: #f0f0f0;
-        }
-        
-        /* ===== 引用區塊 ===== */
-        blockquote {
-            border-left: 5px solid #3498db;
-            background: #f8f9fa;
-            padding: 16px 24px;
-            margin: 24px 0;
-            font-style: italic;
-            color: #555;
-            page-break-inside: avoid;
-        }
-        
-        /* ===== 連結樣式 ===== */
-        a {
-            color: #3498db;
-            text-decoration: none;
-        }
-        
-        a:hover {
-            text-decoration: underline;
-        }
-        
-        /* ===== 圖片樣式 ===== */
-        img {
-            max-width: 100%;
-            height: auto;
-            display: block;
-            margin: 24px auto;
-            border-radius: 6px;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.15);
-            page-break-inside: avoid;
-        }
-        
-        /* ===== 分隔線 ===== */
-        hr {
-            border: none;
-            border-top: 2px solid #ddd;
-            margin: 32px 0;
-        }
-        
-        /* ===== 強調文字 ===== */
-        strong, b {
-            font-weight: bold;
-            color: #2c3e50;
-        }
-        
-        em, i {
-            font-style: italic;
-            color: #555;
-        }
-        
-        /* ===== 列印專用樣式 ===== */
         @media print {
-            body {
-                font-size: 12pt;
-            }
-            
-            h1 {
-                page-break-before: always;
-            }
-            
-            h1:first-of-type {
-                page-break-before: avoid;
-            }
-            
-            h1, h2, h3, h4, h5, h6 {
-                page-break-after: avoid;
-            }
-            
-            p, li {
-                orphans: 3;
-                widows: 3;
-            }
-            
-            pre, table, img, blockquote {
-                page-break-inside: avoid;
-            }
-            
-            a {
-                color: #3498db;
-                text-decoration: underline;
-            }
+            .toc-container { page-break-after: always; }
         }
     </style>
 </head>
 <body>
+    ${tocHTML}
     ${htmlBody}
 </body>
 </html>
@@ -283,42 +222,60 @@ function markdownToHTML(markdownContent) {
     return fullHTML;
 }
 
+// 產生目錄 HTML 結構
+function generateTOCHTML(items) {
+    if (items.length === 0) return '';
+
+    let html = `
+    <div class="toc-container">
+        <div class="toc-header">目錄</div>
+        <ul class="toc-list">
+    `;
+
+    items.forEach(item => {
+        html += `
+            <li class="toc-item ${item.level}">
+                <a href="#${item.slug}" class="toc-link">${item.title}</a>
+                <span class="toc-filler"></span>
+                <span class="toc-page">⇲</span>
+            </li>
+        `;
+    });
+
+    html += `
+        </ul>
+        <div style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
+            (點擊標題可跳轉章節，完整頁碼請參閱 Word 檔)
+        </div>
+    </div>
+    `;
+
+    return html;
+}
+
 // ============================================
 // 產生 PDF (使用 Puppeteer)
 // ============================================
 async function generatePDF(htmlContent, originalFilename) {
     console.log('  → 啟動 PDF 渲染引擎...');
-
-    // 啟動無頭瀏覽器
     const browser = await puppeteer.launch({
         headless: 'new',
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
 
     const page = await browser.newPage();
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
 
-    // 載入 HTML 內容
-    await page.setContent(htmlContent, {
-        waitUntil: 'networkidle0'
-    });
-
-    // 產生輸出檔名
     const outputFilename = originalFilename.replace('.md', '.pdf');
     const outputPath = path.join(__dirname, '../output/pdf', outputFilename);
 
-    // 產生 PDF
     await page.pdf({
         path: outputPath,
         format: 'A4',
-        margin: {
-            top: '20mm',
-            right: '20mm',
-            bottom: '20mm',
-            left: '20mm'
-        },
+        margin: { top: '20mm', right: '20mm', bottom: '20mm', left: '20mm' },
         printBackground: true,
         displayHeaderFooter: true,
-        headerTemplate: '<div></div>',
+        headerTemplate: '<div style="font-size:10px;text-align:right;width:100%;margin-right:20px;">教材文件</div>',
         footerTemplate: `
             <div style="font-size: 10px; text-align: center; width: 100%; color: #666;">
                 <span class="pageNumber"></span> / <span class="totalPages"></span>
@@ -327,7 +284,6 @@ async function generatePDF(htmlContent, originalFilename) {
     });
 
     await browser.close();
-
     console.log('  ✓ PDF 產生完成:', outputFilename);
     return outputPath;
 }
@@ -337,18 +293,17 @@ async function generatePDF(htmlContent, originalFilename) {
 // ============================================
 async function generateWord(markdownFilePath, originalFilename) {
     console.log('  → 啟動 Word 轉換引擎...');
-
     const outputFilename = originalFilename.replace('.md', '.docx');
     const outputPath = path.join(__dirname, '../output/docx', outputFilename);
 
-    // 檢查 Pandoc 是否安裝
     try {
         await execPromise('pandoc --version');
     } catch (error) {
-        throw new Error('找不到 Pandoc! 請先安裝 Pandoc: https://pandoc.org/installing.html');
+        throw new Error('找不到 Pandoc! 請先安裝: https://pandoc.org/');
     }
 
-    // 使用 Pandoc 轉換
+    // 加入 --toc 指令以產生原生目錄
+    // 使用 reference-doc 可以客製化樣式，但這裡使用預設
     const command = `pandoc "${markdownFilePath}" -o "${outputPath}" --toc --toc-depth=3`;
 
     try {
@@ -360,9 +315,6 @@ async function generateWord(markdownFilePath, originalFilename) {
     }
 }
 
-// ============================================
-// 匯出函式
-// ============================================
 module.exports = {
     markdownToHTML,
     generatePDF,

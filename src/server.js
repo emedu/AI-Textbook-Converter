@@ -109,8 +109,19 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         const textConverter = require('./textToMarkdown');
         if (isProbablyPlainText(markdownContent)) {
             console.log('🔄 偵測到純文字格式，正在自動轉換為 Markdown...');
-            markdownContent = textConverter.convertTextToMarkdown(markdownContent);
+            markdownContent = await textConverter.convertTextToMarkdown(markdownContent);
         }
+
+
+        // 保存處理後的 Markdown 內容到暫存檔，供 Word 轉換使用 (修正 Word 排版/目錄問題)
+        // 針對 Word，將通用分頁標記替換為 OpenXML 強制分頁
+        const wordPageBreak = '\n```{=openxml}\n<w:p><w:r><w:br w:type="page"/></w:r></w:p>\n```\n';
+        const wordMarkdownContent = markdownContent.replace(/<!-- PAGE_BREAK -->/g, wordPageBreak);
+
+        const processedFilePath = filePath + '.processed.md';
+        fs.writeFileSync(processedFilePath, wordMarkdownContent, 'utf-8');
+        console.log('💾 已儲存處理後的 Markdown (Word版):', processedFilePath);
+
 
         // 第一階段:先產生基本 HTML
         const converter = require('./converter');
@@ -121,8 +132,12 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         const pdfPath = await converter.generatePDF(htmlContent, req.file.originalname);
 
         // 產生 Word(使用 Pandoc)
-        console.log('📝 正在產生 Word...');
-        const docxPath = await converter.generateWord(filePath, req.file.originalname);
+        console.log('📝 正在產生 Word (使用優化後的內容)...');
+        // 使用 processedFilePath 而不是 filePath
+        const docxPath = await converter.generateWord(processedFilePath, req.file.originalname);
+
+        // 轉換完成後刪除暫存檔
+        try { fs.unlinkSync(processedFilePath); } catch (e) { }
 
         // 回傳下載連結和預覽內容
         res.json({
