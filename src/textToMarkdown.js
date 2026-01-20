@@ -136,16 +136,13 @@ async function processTablesWithAI(text) {
         // 0. 強制標記模式檢測
         // 支援 【表格開始】 或 [表格開始]
         if (trimmed === '【表格開始】' || trimmed === '[表格開始]') {
-            // 如果之前有正在累積的內容，先存起來
+            // 如果之前有正在累積的內容，先結算為普通文字
             if (currentChunk.length > 0) {
-                // 如果之前就在累積「潛在表格」，現在遇到強制開始，那之前的就先結算
-                // 但為了安全，我們可以把這裡的邏輯簡化：強制切斷上一塊
-                chunks.push({ type: isPotentialTable ? 'table_candidate' : 'text', content: currentChunk.join('\n') });
+                chunks.push({ type: 'text', content: currentChunk.join('\n') });
             }
             currentChunk = [];
 
-            // 重置狀態進入強制模式
-            isPotentialTable = true;
+            // 進入強制模式
             isExplicitTable = true;
             continue; // 不將標記本身加入內容
         }
@@ -157,7 +154,6 @@ async function processTablesWithAI(text) {
                     chunks.push({ type: 'table_candidate', content: currentChunk.join('\n') });
                 }
                 currentChunk = [];
-                isPotentialTable = false;
                 isExplicitTable = false;
                 continue;
             }
@@ -169,43 +165,14 @@ async function processTablesWithAI(text) {
             continue;
         }
 
-        // ----------------------------------------------------------------
-        // 以下為自動偵測邏輯 (當不是強制模式時執行)
-        // ----------------------------------------------------------------
-
-        // 判斷是否為表格行特徵
-        const hasTabs = line.includes('\t');
-        const hasMultiSpaces = /\s{2,}/.test(line.trim());
-        // 新增特徵：短行且非空 (例如長度 < 30)，可能是垂直列表表格
-        const isShortLine = line.trim().length > 0 && line.trim().length < 40;
-
-        const contentRatio = line.trim().length > 0;
-
-        // 如果是 (Tab) 或 (多空白) 或 (連續的短行)
-        // 為了避免誤判一般對話，我們這裡稍微寬鬆一點，讓 AI 去判斷
-        if (contentRatio && (hasTabs || hasMultiSpaces || isShortLine)) {
-            if (!isPotentialTable) {
-                // 結束上一段一般文字
-                if (currentChunk.length > 0) chunks.push({ type: 'text', content: currentChunk.join('\n') });
-                currentChunk = [];
-                isPotentialTable = true;
-            }
-            currentChunk.push(line);
-        } else {
-            if (isPotentialTable) {
-                // 這裡有個小優化：如果這個 block 只有 1 行，那可能只是普通的標題或短句，不算表格
-                if (currentChunk.length <= 1) {
-                    chunks.push({ type: 'text', content: currentChunk.join('\n') });
-                } else {
-                    chunks.push({ type: 'table_candidate', content: currentChunk.join('\n') });
-                }
-                currentChunk = [];
-                isPotentialTable = false;
-            }
-            currentChunk.push(line);
-        }
+        // 當不在標記模式內時，所有內容視為一般文字，不進行自動偵測
+        currentChunk.push(line);
     }
-    if (currentChunk.length > 0) chunks.push({ type: isPotentialTable ? 'table_candidate' : 'text', content: currentChunk.join('\n') });
+
+    // 結尾收尾
+    if (currentChunk.length > 0) {
+        chunks.push({ type: 'text', content: currentChunk.join('\n') });
+    }
 
     // 處理每個區塊
     let finalContent = '';
