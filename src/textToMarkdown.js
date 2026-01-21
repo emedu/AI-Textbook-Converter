@@ -16,41 +16,46 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
  * 3. 標題與列表結構化
  */
 async function convertTextToMarkdown(plainText) {
-    // 1. 移除原始檔案中的舊目錄
-    let content = removeOldTOC(plainText);
+    // 1. 根據標記物切分目錄區與正文區
+    const { tocContent, mainContent } = extractSectionsUsingMarkers(plainText);
 
-    // 2. 透過 AI 處理潛在的表格區塊
-    content = await processTablesWithAI(content);
+    // 2. 透過 AI 處理正文中的表格 (僅針對正文區)
+    const processedMainContent = await processTablesWithAI(mainContent);
 
     // 3. 處理標題與列表結構 (Regex 規則引擎)
-    const lines = content.split('\n');
+    let lines = processedMainContent.split('\n');
     const result = [];
+
+    // 如果有自定義目錄區，先處理目錄區 (如果使用者需要將目錄區也轉為 MD)
+    // 但通常系統會自動生成目錄，所以這裡我們主要確保正文完整
+
+    let contentStarted = false;
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const trimmedLine = line.trim();
 
-        if (!trimmedLine) {
-            result.push('');
-            continue;
-        }
+        // 徹底過濾掉任何包含標記物的行，不讓它們出現在成品中
+        if (trimmedLine.includes('【') && trimmedLine.includes('】')) continue;
 
-        // 如果這行已經被 AI 轉為 Markdown 表格 (以 | 開頭)，就直接保留
+        if (!trimmedLine && !contentStarted) continue;
+        contentStarted = true;
+
         if (entryIsTableAndProcessed(line)) {
             result.push(line);
             continue;
         }
 
-        // 檢測標題層級
         const headingLevel = detectHeadingLevel(trimmedLine, i, lines);
 
         if (headingLevel > 0) {
             const cleanTitle = cleanTitleText(trimmedLine);
-            // H1 自動換頁邏輯：如果是 H1，且不是第一行，則插入 Pandoc 強制換頁符號
-            if (headingLevel === 1 && i > 0) {
-                result.push('\n<!-- PAGE_BREAK -->\n'); // 使用通用分頁標記，稍後由不同轉換器處理
+            // H1 自動換頁邏輯
+            if (headingLevel === 1 && result.length > 0) {
+                result.push('\n<!-- PAGE_BREAK -->\n');
             }
-            result.push('#'.repeat(headingLevel) + ' ' + cleanTitle);
+            // 強制標題前後有空行，這對 Word (Pandoc) 識別至關重要
+            result.push('\n' + '#'.repeat(headingLevel) + ' ' + cleanTitle + '\n');
         } else if (isListItem(trimmedLine)) {
             result.push(convertToListItem(trimmedLine));
         } else {
@@ -58,58 +63,59 @@ async function convertTextToMarkdown(plainText) {
         }
     }
 
-    return result.join('\n');
+    // 清理多餘的連續空行
+    return result.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+/**
+ * 根據使用者標記 【目錄開始】【正文開始】 提取內容
+ * 確保數據 0 誤刪
+ */
+function extractSectionsUsingMarkers(text) {
+    const lines = text.split('\n');
+    let mainContent = "";
+
+    const tocStartIdx = lines.findIndex(l => l.trim().includes('【目錄開始】'));
+    const tocEndIdx = lines.findIndex(l => l.trim().includes('【目錄結束】'));
+    const mainStartIdx = lines.findIndex(l => l.trim().includes('【正文開始】'));
+
+    // 邏輯 1：如果有明確的【正文開始】，這最安全
+    if (mainStartIdx !== -1) {
+        mainContent = lines.slice(mainStartIdx + 1).join('\n');
+        return { mainContent };
+    }
+
+    // 邏輯 2：如果只有【目錄開始】或【目錄結束】
+    // 我們必須把目錄區塊剪掉，否則目錄裡的「第一章」會被誤認為正文標題，導致目錄重複
+    if (tocStartIdx !== -1) {
+        let actualStart = 0;
+        if (tocEndIdx !== -1) {
+            actualStart = tocEndIdx + 1;
+        } else {
+            // 如果忘了寫結束，我們找下一個明顯的標題或空行之後
+            actualStart = tocStartIdx + 1;
+            // 往後找 20 行，看有沒有重複出現的標題
+            const rest = lines.slice(tocStartIdx + 1);
+            for (let i = 0; i < Math.min(rest.length, 50); i++) {
+                if (isMajorSection(rest[i].trim())) {
+                    actualStart = tocStartIdx + 1 + i;
+                    break;
+                }
+            }
+        }
+        mainContent = lines.slice(actualStart).join('\n');
+    } else {
+        // 邏輯 3：完全沒標記，全量保留
+        mainContent = text;
+    }
+
+    return { mainContent };
 }
 
 /**
  * 移除舊的目錄區塊
  */
-function removeOldTOC(text) {
-    // 簡單邏輯：如果開頭 50 行內出現 "目錄" 且接著是一堆點點點的行，就把它們刪掉
-    const lines = text.split('\n');
-    let outputLines = [];
-    let processingTOC = false;
-    let tocFound = false;
-    let keepLooking = true;
-
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-
-        // 只在前 100 行檢查目錄
-        if (i > 100) keepLooking = false;
-
-        if (keepLooking && !tocFound) {
-            // 偵測目錄開始
-            if (/^目錄/.test(line) || /^Table of Contents/.test(line)) {
-                processingTOC = true;
-                tocFound = true;
-                continue; // 跳過這行
-            }
-        }
-
-        if (processingTOC) {
-            // 判斷目錄是否結束：如果遇到空行或是看起來像標題的內容
-            // 寬鬆判斷：如果這行包含 "..." 或 "…" 且結尾是數字，視為目錄項目
-            const isTOCItem = /[\.…]{2,}\s*\d+$/.test(line);
-
-            // 如果遇到連續空行或不像目錄項目的內容，結束目錄刪除
-            if (!line) {
-                continue; // 忽略目錄中的空行
-            }
-
-            if (!isTOCItem && line.length > 5) {
-                // 看到正常的內容了，結束目錄處理
-                processingTOC = false;
-                outputLines.push(lines[i]); // 保留這行
-            }
-            // 如果是 TOC Item，就跳過不加到 output
-        } else {
-            outputLines.push(lines[i]);
-        }
-    }
-
-    return outputLines.join('\n');
-}
+// removeOldTOC 函式已廢棄，改用標記物引導
 
 /**
  * 使用 AI 識別並轉換表格
@@ -241,21 +247,36 @@ async function callGeminiToConvertTable(textChunk) {
 }
 
 function isMajorSection(line) {
-    return /^(導論|前言|序言|附錄|結語|總結|結論|參考文獻)[:：]?/.test(line) ||
-        /^第[一二三四五六七八九十\d]+章[:：]?/.test(line);
+    return /^第[一二三四五六七八九十\d]+章/.test(line) ||
+        /^《.+》$/.test(line) ||
+        /^(導論|前言|序言|附錄|結語|總結|結論|參考文獻)[:：]?$/.test(line);
 }
 
 function detectHeadingLevel(line, lineIndex, allLines) {
-    if (isMajorSection(line)) return 1;
+    const trimmed = line.trim();
+    if (!trimmed) return 0;
 
-    const numberMatch = line.match(/^(\d+(?:\.\d+)*)[.\s]+(.+)/);
+    // **關鍵安全鎖**：標題若超過 45 個字，極可能是內文誤判，強制設為 0
+    if (trimmed.length > 45) return 0;
+
+    // H1: 第一章 或 《書名》
+    if (isMajorSection(trimmed)) return 1;
+
+    // H2: 第一節
+    if (/^第[一二三四五六七八九十\d]+節/.test(trimmed)) return 2;
+
+    // 處理數字型標題 (1.1, 1.1.1)
+    const numberMatch = trimmed.match(/^(\d+(?:\.\d+)+)[.\s]+(.+)/);
     if (numberMatch) {
         const depth = numberMatch[1].split('.').length;
-        if (depth === 1) return 2;
-        if (depth === 2) return 3;
-        if (depth === 3) return 4;
-        return 5;
+        if (depth === 2) return 3; // 1.1 -> H3
+        return depth + 1;
     }
+
+    // H3: 第一步 或 特殊符號加粗
+    if (/^第[一二三四五六七八九十\d]+(步|步驟)/.test(trimmed)) return 3;
+    if (/^[●○]\s/.test(trimmed)) return 3;
+
     return 0;
 }
 
@@ -267,13 +288,21 @@ function cleanTitleText(text) {
         .trim();
 }
 
+// 檢查是否為列表項目 (1. 2. 3. 或 - 或 * 或 ●)
 function isListItem(line) {
-    return /^[•●○◦▪▫-]\s/.test(line) || /^[\da-z]+[.)]\s/.test(line);
+    return /^[\d一二三四五六七八九十]+\.\s/.test(line) ||
+        /^[●○\-*]\s/.test(line);
 }
 
+// 轉換為 Markdown 列表格式 (不再強制轉為 -，保留原貌以防有序列表需求)
 function convertToListItem(line) {
-    if (line.startsWith('- ')) return line;
-    return '- ' + line.replace(/^[•●○◦▪▫-]\s*/, '').replace(/^[\da-z]+[.)]\s*/, '');
+    const trimmed = line.trim();
+    // 如果是數字開頭，保持原本數字編號
+    if (/^[\d一二三四五六七八九十]+\.\s/.test(trimmed)) {
+        return trimmed;
+    }
+    // 其他轉為標準 Markdown 列表符號
+    return '- ' + trimmed.replace(/^[●○\-*]\s/, '');
 }
 
 function entryIsTableAndProcessed(line) {

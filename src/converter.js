@@ -14,7 +14,8 @@ const execPromise = util.promisify(exec);
 const md = new MarkdownIt({
     html: true,
     linkify: true,
-    typographer: true
+    typographer: true,
+    breaks: true // 強制將換行轉換為 <br>，解決內文變成一整塊的問題
 });
 
 // 用於儲存生成的目錄項目
@@ -55,7 +56,21 @@ function markdownToHTML(markdownContent) {
     tocItems = [];
 
     // 將 Markdown 轉換為 HTML (這裡會觸發上面的 renderer 收集 tocItems)
-    const htmlBody = md.render(markdownContent);
+    let htmlBody = md.render(markdownContent);
+
+    // 重點快優化 (💡, ⚠️, 🎓 等圖示自動轉為色塊)
+    htmlBody = htmlBody.replace(/<p>(💡|⚠️|📌|✅|❌|👉|🔍|🔬|📖|🎓|⛔|👨\u200D🏫)(.*?)<\/p>/g, (match, icon, text) => {
+        let type = 'info';
+        if (icon === '⚠️' || icon === '⛔') type = 'warning';
+        if (icon === '💡' || icon === '🎓' || icon === '👨\u200D🏫') type = 'tip';
+        if (icon === '✅') type = 'success';
+        if (icon === '📌' || icon === '👉') type = 'note';
+
+        return `<div class="callout ${type}">
+            <span class="callout-icon">${icon}</span>
+            <div class="callout-content">${text}</div>
+        </div>`;
+    });
 
     // 生成目錄 HTML
     const tocHTML = generateTOCHTML(tocItems);
@@ -79,142 +94,203 @@ function markdownToHTML(markdownContent) {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
-            font-family: "Microsoft JhengHei", "微軟正黑體", Arial, sans-serif;
-            line-height: 1.9;
-            color: #333;
-            background: white;
-            font-size: 14px;
+            font-family: "Noto Sans TC", "Inter", "Segoe UI", "Microsoft JhengHei", sans-serif;
+            line-height: 1.8;
+            color: #2c3e50;
+            background: #f0f2f5; 
+            padding: 40px 20px;
         }
 
-        /* ===== 目錄樣式 (TOC) - 仿書籍排版 ===== */
+        .page-content {
+            background: white;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 70px 80px;
+            box-shadow: 0 15px 45px rgba(0,0,0,0.08);
+            min-height: 1100px;
+            border-radius: 4px;
+        }
+
+        /* ===== 目錄樣式 (TOC) - 精化版 ===== */
         .toc-container {
             page-break-after: always;
-            margin-bottom: 40px;
-            padding: 20px;
-            background: #fff;
+            margin-bottom: 80px;
+            padding: 40px;
+            border: 1px solid #eef2f6;
+            background: #ffffff;
+            border-radius: 8px;
         }
 
         .toc-header {
             text-align: center;
-            font-size: 24px;
-            font-weight: bold;
-            margin-bottom: 30px;
-            border-bottom: 2px solid #333;
-            padding-bottom: 10px;
+            font-size: 32px;
+            font-weight: 900;
+            margin-bottom: 50px;
+            color: #1a4a7c;
+            letter-spacing: 4px;
         }
 
-        .toc-list {
-            list-style: none;
-            padding: 0;
-        }
+        .toc-list { list-style: none; padding: 0; }
 
         .toc-item {
             display: flex;
-            align-items: baseline;
-            margin-bottom: 8px;
+            align-items: center;
+            margin-bottom: 14px;
+            overflow: hidden;
         }
 
         .toc-item.h1 {
-            font-weight: bold;
-            margin-top: 15px;
-            font-size: 16px;
+            font-weight: 800;
+            margin-top: 25px;
+            font-size: 18px;
+            color: #1a4a7c;
         }
 
         .toc-item.h2 {
-            margin-left: 20px;
-            font-size: 14px;
-            color: #555;
+            margin-left: 30px;
+            font-size: 15.5px;
+            color: #4a5568;
+            font-weight: 500;
         }
 
         .toc-link {
             text-decoration: none;
             color: inherit;
+            /* 移除 ellipsis，允許長標題正常換行 */
+            line-height: 1.4;
+            flex: 1;
         }
 
-        /* 點點引導線 */
         .toc-filler {
             flex-grow: 1;
-            border-bottom: 1px dotted #999;
-            margin: 0 10px;
+            border-bottom: 1px dotted #cbd5e0;
+            margin: 0 15px;
             position: relative;
-            top: -4px; /* 微調對齊 */
+            top: -4px;
         }
 
         .toc-page {
-            font-size: 12px;
-            color: #888;
+            font-size: 14px;
+            color: #718096;
+            font-family: serif;
+            font-weight: normal;
         }
 
-        /* ===== 標題樣式 ===== */
+        /* ===== 標題樣式 (精品書籍風格) ===== */
         h1 {
-            font-size: 28px;
-            font-weight: bold;
-            color: #1a1a1a;
-            border-bottom: 4px solid #3498db;
-            padding-bottom: 12px;
-            margin-top: 0;
-            margin-bottom: 24px;
+            font-size: 30px;
+            font-weight: 900;
+            color: #1a4a7c;
+            margin: 60px 0 35px 0;
+            padding-bottom: 15px;
+            border-bottom: 5px solid #1a4a7c;
             page-break-before: always;
-            page-break-after: avoid;
         }
-        
-        h1:first-of-type { page-break-before: avoid; }
+
+        h1:first-of-type { 
+            page-break-before: avoid; 
+            margin-top: 0;
+        }
         
         h2 {
-            font-size: 22px;
-            font-weight: bold;
-            color: #2c3e50;
-            border-left: 6px solid #3498db;
-            padding-left: 16px;
-            margin-top: 32px;
-            margin-bottom: 16px;
+            font-size: 24px;
+            font-weight: 800;
+            color: #1a4a7c;
+            padding: 10px 0;
+            margin: 50px 0 25px 0;
+            border-top: 1px solid #dee2e6;
+            border-bottom: 1px solid #dee2e6;
+            letter-spacing: 1px;
             page-break-after: avoid;
         }
         
-        h3 { font-size: 18px; margin-top: 24px; margin-bottom: 12px; }
-        h4 { font-size: 16px; margin-top: 20px; margin-bottom: 10px; }
+        h3 { 
+            font-size: 19px; 
+            font-weight: 800;
+            margin-top: 35px; 
+            margin-bottom: 18px; 
+            color: #334e68;
+            padding-left: 10px;
+            border-left: 4px solid #334e68;
+        }
+
+        /* ===== 重點提示塊 (Callouts) ===== */
+        .callout {
+            display: flex;
+            margin: 35px 0;
+            padding: 22px 28px;
+            border-radius: 4px;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-left-width: 6px;
+            page-break-inside: avoid;
+        }
         
-        p { margin: 14px 0; text-align: justify; line-height: 2.0; }
-        ul, ol { margin: 16px 0; padding-left: 32px; }
-        li { margin: 10px 0; line-height: 1.8; }
+        .callout.tip { background: #f0fff4; border-color: #c6f6d5; border-left-color: #38a169; }
+        .callout.warning { background: #fff5f5; border-color: #fed7d7; border-left-color: #e53e3e; }
+        .callout.info { background: #ebf8ff; border-color: #bee3f8; border-left-color: #3182ce; }
+        .callout.note { background: #fffaf0; border-color: #feebc8; border-left-color: #dd6b20; }
+
+        .callout-icon {
+            font-size: 24px;
+            margin-right: 22px;
+            line-height: 1.2;
+        }
+        
+        .callout-content {
+            flex: 1;
+            font-size: 15.5px;
+            color: #2d3748;
+        }
+        
+        .callout-content p { margin: 0; }
+
+        p { margin: 25px 0; text-align: justify; word-break: break-all; }
+        ul, ol { margin: 25px 0; padding-left: 30px; }
+        li { margin: 15px 0; }
         
         /* 表格樣式優化 */
         table {
             width: 100%;
             border-collapse: collapse;
-            margin: 24px 0;
+            margin: 40px 0;
             page-break-inside: avoid;
-            font-size: 13px;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.05);
+            font-size: 14.5px;
         }
         
         th {
-            background: #3498db;
-            color: white;
-            padding: 14px 12px;
-            border: 1px solid #2980b9;
+            background: #f8f9fa;
+            color: #1a4a7c;
+            padding: 15px;
+            border-top: 2px solid #1a4a7c;
+            border-bottom: 1px solid #dee2e6;
+            text-align: left;
+            font-weight: 800;
         }
         
         td {
-            border: 1px solid #ddd;
-            padding: 12px;
+            border-bottom: 1px solid #edf2f7;
+            padding: 15px;
+            color: #4a5568;
         }
         
-        tr:nth-child(even) { background: #f9f9f9; }
+        tr:nth-child(even) { background: #fdfdfe; }
 
         /* 其他元素 */
-        blockquote { border-left: 5px solid #3498db; background: #f8f9fa; padding: 16px; margin: 20px 0; }
-        img { max-width: 100%; height: auto; display: block; margin: 20px auto; }
-        a { color: #3498db; text-decoration: none; }
+        blockquote { border-left: 5px solid #cbd5e0; color: #4a5568; padding: 15px 25px; margin: 30px 0; font-style: italic; background: #fcfcfc; }
+        img { max-width: 100%; height: auto; border-radius: 2px; display: block; margin: 40px auto; filter: drop-shadow(0 5px 15px rgba(0,0,0,0.1)); }
         
         @media print {
-            .toc-container { page-break-after: always; }
+            body { background: white; padding: 0; }
+            .page-content { box-shadow: none; padding: 0; width: 100%; max-width: none; }
         }
     </style>
 </head>
 <body>
-    ${tocHTML}
-    ${htmlBody}
+    <div class="page-content">
+        ${tocHTML}
+        ${htmlBody}
+    </div>
 </body>
 </html>
     `;
